@@ -248,16 +248,98 @@ def _token_set(text: str) -> set[str]:
     return {t for t in text.split() if t}
 
 
+_FILLER_TOKENS = {
+    # Articles / prepositions / conjunctions
+    "a",
+    "au",
+    "aux",
+    "de",
+    "des",
+    "du",
+    "d",
+    "l",
+    "le",
+    "la",
+    "les",
+    "un",
+    "une",
+    "et",
+    "ou",
+    "en",
+    "dans",
+    "sur",
+    "pour",
+    "avec",
+    # Common Vosk noise words
+    "ce",
+    "ca",
+    "cela",
+    "c",
+    "est",
+    "s",
+    "soeur",
+    "soeurs",
+}
+
+
+def _strip_fillers(text: str) -> str:
+    t = normalize_text(text)
+    if not t:
+        return ""
+    toks = [x for x in t.split() if x and x not in _FILLER_TOKENS]
+    return " ".join(toks)
+
+
 def _similarity(a: str, b: str) -> float:
     if not a or not b:
         return 0.0
     return SequenceMatcher(None, a, b).ratio()
 
 
+def _skeleton(text: str) -> str:
+    """Return a very lightweight phonetic-ish signature.
+
+    This helps when Vosk FR outputs French-looking words for English app names.
+    Example: "prusa slicer" -> "prusse a cela et" still shares consonant structure.
+    """
+    t = normalize_text(text)
+    if not t:
+        return ""
+
+    # Join words first so tokenization differences don't hurt
+    t = t.replace(" ", "")
+
+    # Normalize common digraphs / confusions
+    t = t.replace("ph", "f")
+    t = t.replace("qu", "k")
+    t = t.replace("ck", "k")
+    t = t.replace("c", "k")
+    t = t.replace("q", "k")
+    t = t.replace("z", "s")
+    t = t.replace("v", "f")
+
+    # Drop vowels
+    vowels = set("aeiouy")
+    consonants = [ch for ch in t if ch not in vowels]
+
+    # Compress repeats (e.g. prrruussaa -> prusa-ish)
+    out: list[str] = []
+    for ch in consonants:
+        if not out or out[-1] != ch:
+            out.append(ch)
+    return "".join(out)
+
+
 def _app_match_score(spoken_key: str, app_key: str) -> float:
     """Lightweight fuzzy score in [0, 1]."""
     if not spoken_key or not app_key:
         return 0.0
+
+    # Remove common filler words that Vosk FR often injects
+    spoken_key = _strip_fillers(spoken_key)
+    if not spoken_key:
+        return 0.0
+    app_key = normalize_text(app_key)
 
     # Strong boost for substring relationship on non-trivial inputs
     if len(spoken_key) >= 4 and (spoken_key in app_key or app_key in spoken_key):
@@ -267,9 +349,11 @@ def _app_match_score(spoken_key: str, app_key: str) -> float:
 
     spoken_nospace = spoken_key.replace(" ", "")
     app_nospace = app_key.replace(" ", "")
+    skel_sim = _similarity(_skeleton(spoken_key), _skeleton(app_key))
     char_sim = max(
         _similarity(spoken_key, app_key),
         _similarity(spoken_nospace, app_nospace),
+        skel_sim,
     )
     st = _token_set(spoken_key)
     at = _token_set(app_key)
@@ -290,26 +374,39 @@ def _resolve_app(app_spoken: str, apps: Dict[str, str]) -> Optional[ResolvedApp]
     if not key:
         return None
 
-    if key in apps:
-        return ResolvedApp(name=key, command=apps[key], score=1.0, exact=True)
+    key_clean = _strip_fillers(key)
+    spoken_candidates = [key]
+    if key_clean and key_clean != key:
+        spoken_candidates.append(key_clean)
+
+    for spoken_key in spoken_candidates:
+        if spoken_key in apps:
+            return ResolvedApp(
+                name=spoken_key,
+                command=apps[spoken_key],
+                score=1.0,
+                exact=(spoken_key == key),
+            )
 
     # Match by contains first (cheap + usually safe)
-    for name, cmd in apps.items():
-        if key == name or (len(key) >= 4 and (key in name or name in key)):
-            return ResolvedApp(name=name, command=cmd, score=0.90, exact=False)
+    for spoken_key in spoken_candidates:
+        for name, cmd in apps.items():
+            if spoken_key == name or (len(spoken_key) >= 4 and (spoken_key in name or name in spoken_key)):
+                return ResolvedApp(name=name, command=cmd, score=0.90, exact=False)
 
     # Fuzzy: pick best match above threshold
     best: Optional[ResolvedApp] = None
-    for name, cmd in apps.items():
-        score = _app_match_score(key, name)
-        if best is None or score > best.score:
-            best = ResolvedApp(name=name, command=cmd, score=score, exact=False)
+    for spoken_key in spoken_candidates:
+        for name, cmd in apps.items():
+            score = _app_match_score(spoken_key, name)
+            if best is None or score > best.score:
+                best = ResolvedApp(name=name, command=cmd, score=score, exact=False)
 
     if best is None:
         return None
 
     # Avoid accidental launches on extremely short inputs
-    if len(key) < 4 and best.score < 0.90:
+    if len(key_clean or key) < 4 and best.score < 0.90:
         return None
 
     # Threshold avoids launching random apps on very weak matches
