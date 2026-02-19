@@ -12,8 +12,13 @@ Quick summary: offline voice commands for Hyprland using Vosk. Launch apps and s
 ### System deps (Arch)
 
 ```bash
-sudo pacman -S python python-pip portaudio
+sudo pacman -S python python-pip portaudio libnotify
+
+# Notification daemon (Wayland/Hyprland)
+sudo pacman -S mako
 ```
+
+In Hyprland, start the daemon (example): add `exec-once = mako` to your Hyprland config.
 
 ### Python deps
 
@@ -25,11 +30,8 @@ pip install -r requirements.txt
 
 ### Vosk French model
 
-Télécharge un modèle FR (ex: small) et dézippe dans `models/`.
-Dans la config, pointe `vosk_model_path` vers le dossier du modèle.
-
-Exemples (à adapter):
-- `models/vosk-model-small-fr-0.22/`
+`./start.sh` auto-télécharge le modèle FR gratuit (small) si absent et l’extrait dans `models/`.
+Ensuite `vosk_model_path` doit pointer vers le dossier du modèle (défaut: `./models/vosk-model-small-fr-0.22`).
 
 ## Config
 
@@ -43,6 +45,11 @@ cp config.example.json config.json
 - `apps`: dictionnaire "nom prononcé" -> commande shell
 - `delete_aliases`: dictionnaire "alias prononcé" -> chemin réel
 - `delete_base_dir`: répertoire racine autorisé pour la suppression
+
+Optionnel:
+- `notifications_enabled`: active les notifications (via `notify-send`)
+- `notification_timeout_ms`: durée (ms)
+- `app_match_threshold`: sensibilité du matching (0.5 = très sensible)
 
 Important: `supprime ...` only deletes targets inside `delete_base_dir`.
 

@@ -11,8 +11,13 @@ Control por voz ligero y 100% local para Linux (probado en Arch + Hyprland). Sin
 ## Requisitos (Arch)
 
 ```bash
-sudo pacman -S python python-pip portaudio
+sudo pacman -S python python-pip portaudio libnotify
+
+# Demonio de notificaciones (Wayland/Hyprland)
+sudo pacman -S mako
 ```
+
+En Hyprland, inicia el demonio (ejemplo): añade `exec-once = mako` a tu configuración de Hyprland.
 
 ## Instalación
 
@@ -24,11 +29,8 @@ pip install -r requirements.txt
 
 ## Modelo Vosk en francés
 
-Descarga un modelo Vosk FR y descomprímelo en `models/`.
-Después ajusta `vosk_model_path` en `config.json`.
-
-Ejemplo:
-- `./models/vosk-model-small-fr-0.22`
+`./start.sh` descarga automáticamente el modelo FR gratuito (small) si falta y lo extrae en `models/`.
+Luego `vosk_model_path` debe apuntar al directorio del modelo (por defecto: `./models/vosk-model-small-fr-0.22`).
 
 ## Configuración
 
@@ -36,6 +38,11 @@ Edita `config.json`:
 - `apps`: nombre hablado -> comando
 - `delete_aliases`: alias hablado -> ruta real
 - `delete_base_dir`: solo se borran rutas dentro de este directorio
+
+Opcional:
+- `notifications_enabled`: notificaciones de escritorio (via `notify-send`)
+- `notification_timeout_ms`: duración (ms)
+- `app_match_threshold`: sensibilidad del matching (0.5 = muy sensible)
 
 ## Ejecutar
 

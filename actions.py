@@ -113,6 +113,49 @@ def close_app(command: str) -> ExecResult:
     return ExecResult(False, f"Processus introuvable: {exe}")
 
 
+def push_notification(
+    *,
+    title: str,
+    message: str,
+    ok: bool,
+    timeout_ms: int = 2500,
+) -> None:
+    """Send a desktop notification (best-effort).
+
+    On Hyprland/Wayland this typically requires a notification daemon
+    (e.g. mako, dunst) plus `notify-send` (libnotify).
+    """
+    title = title.strip() or "Voice"
+    message = message.strip()
+    if not message:
+        return
+
+    if not _which("notify-send"):
+        return
+
+    urgency = "low" if ok else "normal"
+    try:
+        subprocess.run(
+            [
+                "notify-send",
+                "-a",
+                "voice-recorgnizer",
+                "-u",
+                urgency,
+                "-t",
+                str(int(timeout_ms)),
+                title,
+                message,
+            ],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        # Never crash the assistant because notifications failed
+        return
+
+
 def safe_delete(target: str, base_dir: str) -> ExecResult:
     """Delete a file or directory only if it is inside base_dir."""
     base = Path(base_dir).expanduser().resolve()

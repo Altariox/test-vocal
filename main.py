@@ -10,6 +10,7 @@ from pathlib import Path
 import sounddevice as sd
 from vosk import KaldiRecognizer, Model
 
+from actions import push_notification
 from intents import IntentContext, build_apps_map, load_config, match_intent, normalize_text
 
 
@@ -43,6 +44,9 @@ def main() -> int:
 
     wake_word = normalize_text(str(cfg.get("wake_word", "assistant")))
     require_wake_word = bool(cfg.get("require_wake_word", False))
+
+    notifications_enabled = bool(cfg.get("notifications_enabled", True))
+    notification_timeout_ms = int(cfg.get("notification_timeout_ms", 2500))
 
     ctx = IntentContext(
         apps=build_apps_map({k: str(v) for k, v in cfg.get("apps", {}).items()}),
@@ -107,6 +111,13 @@ def main() -> int:
                 action = match_intent(text, ctx)
                 if action is not None and action.message != "(cooldown)":
                     _print(action.message)
+                    if notifications_enabled:
+                        push_notification(
+                            title="Voice",
+                            message=action.message,
+                            ok=bool(action.ok),
+                            timeout_ms=notification_timeout_ms,
+                        )
 
             # else: partials ignored for perf/simplicity
 
