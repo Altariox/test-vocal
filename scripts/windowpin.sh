@@ -62,20 +62,22 @@ if ! _looks_like_json "$active_json"; then
 fi
 
 # Extract needed fields using python (avoid jq dependency)
-read -r addr monitor_id at_x at_y size_w size_h is_floating < <(
+IFS=$'\t' read -r addr monitor_id at_x at_y size_w size_h is_floating < <(
   python3 - <<'PY'
 import json, sys
 
 try:
   a = json.loads(sys.stdin.read())
 except Exception:
-  print("", 0, 0, 0, 0, 0, 0)
+  print("NONE\t0\t0\t0\t0\t0\t0")
   sys.exit(0)
 addr = a.get('address')
 # address can be int or string like '0x...'
 if isinstance(addr, int):
     addr = hex(addr)
 addr = str(addr or '')
+if not addr:
+    addr = 'NONE'
 mon = a.get('monitor')
 try:
     mon = int(mon)
@@ -85,15 +87,33 @@ at = a.get('at') or [0, 0]
 size = a.get('size') or [0, 0]
 flt = a.get('floating')
 flt = 1 if flt else 0
-print(addr, mon, int(at[0]), int(at[1]), int(size[0]), int(size[1]), flt)
+sys.stdout.write(
+    f"{addr}\t{mon}\t{int(at[0])}\t{int(at[1])}\t{int(size[0])}\t{int(size[1])}\t{flt}"
+)
 PY
 <<<"$active_json"
 )
 
-if [[ -z "$addr" || "$addr" == "None" ]]; then
+if [[ -z "$addr" || "$addr" == "None" || "$addr" == "NONE" ]]; then
   echo "Impossible de lire l'adresse de la fenêtre" >&2
   exit 3
 fi
+
+_int_or_zero() {
+  local v="${1:-}"
+  if [[ "$v" =~ ^-?[0-9]+$ ]]; then
+    echo "$v"
+  else
+    echo 0
+  fi
+}
+
+monitor_id="$(_int_or_zero "$monitor_id")"
+at_x="$(_int_or_zero "$at_x")"
+at_y="$(_int_or_zero "$at_y")"
+size_w="$(_int_or_zero "$size_w")"
+size_h="$(_int_or_zero "$size_h")"
+is_floating="$(_int_or_zero "$is_floating")"
 
 state_file="$state_dir/${addr}.json"
 
@@ -196,7 +216,7 @@ if ! _looks_like_json "$monitors_json"; then
   echo "Hyprland indisponible (monitors n'est pas du JSON)" >&2
   exit 4
 fi
-read -r mon_x mon_y mon_w mon_h res_l res_r res_t res_b < <(
+IFS=$'\t' read -r mon_x mon_y mon_w mon_h res_l res_r res_t res_b < <(
   python3 - "$monitor_id" <<'PY'
 import json, sys
 
@@ -227,10 +247,21 @@ elif isinstance(res, (list, tuple)) and len(res) == 4:
     top, bottom, left, right = map(int, res)
 else:
     top = bottom = left = right = 0
-print(int(mon.get('x',0)), int(mon.get('y',0)), int(mon.get('width',0)), int(mon.get('height',0)), left, right, top, bottom)
+sys.stdout.write(
+  f"{int(mon.get('x',0))}\t{int(mon.get('y',0))}\t{int(mon.get('width',0))}\t{int(mon.get('height',0))}\t{left}\t{right}\t{top}\t{bottom}"
+)
 PY
 <<<"$monitors_json"
 )
+
+mon_x="$(_int_or_zero "$mon_x")"
+mon_y="$(_int_or_zero "$mon_y")"
+mon_w="$(_int_or_zero "$mon_w")"
+mon_h="$(_int_or_zero "$mon_h")"
+res_l="$(_int_or_zero "$res_l")"
+res_r="$(_int_or_zero "$res_r")"
+res_t="$(_int_or_zero "$res_t")"
+res_b="$(_int_or_zero "$res_b")"
 
 x=$(( mon_x + res_l ))
 y=$(( mon_y + res_t ))
