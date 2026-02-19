@@ -45,7 +45,6 @@ Exemple:
 
 ## Commandes voix
 
-- `ouvre <app>` / `lance <app>` / `demarre <app>`
-- `supprime <alias>`
+Note: pour `ouvre/lance`, le nom d’app est matché de façon approximative ("marge d’erreur") si tu ne prononces pas exactement la clé de `apps`.
 
 Note: les mots-clés de commande sont en français (modifiable dans `intents.py`).
