@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -41,6 +42,75 @@ def hypr_exec(command: str) -> ExecResult:
         return ExecResult(True, f"Lancé: {command}")
     except Exception as exc:  # noqa: BLE001
         return ExecResult(False, f"Erreur lancement: {exc}")
+
+
+def close_app(command: str) -> ExecResult:
+    """Best-effort close/quit an app based on its launch command.
+
+    Uses `pkill` when available. This is intentionally simple and local.
+    """
+    command = command.strip()
+    if not command:
+        return ExecResult(False, "Commande vide")
+
+    if not _which("pkill"):
+        return ExecResult(False, "pkill introuvable (installe procps-ng)")
+
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        parts = [command]
+
+    if not parts:
+        return ExecResult(False, "Commande vide")
+
+    exe = Path(parts[0]).name
+    if not exe:
+        exe = parts[0]
+
+    # Common alternates
+    candidates = [exe]
+    if exe == "brave":
+        candidates.append("brave-browser")
+    if exe.lower() == "discord":
+        candidates.extend(["Discord", "discord"])
+    if exe == "onlyoffice-desktopeditors":
+        candidates.append("DesktopEditors")
+    if exe == "prismlauncher":
+        candidates.extend(["PrismLauncher", "prismlauncher"])
+    if exe == "lunar-client":
+        candidates.append("lunar")
+
+    # 1) Prefer exact name match
+    for name in candidates:
+        try:
+            proc = subprocess.run(
+                ["pkill", "-x", name],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if proc.returncode == 0:
+                return ExecResult(True, f"Fermé: {name}")
+        except Exception:
+            # continue to other strategies
+            pass
+
+    # 2) Fallback to matching full command line (more permissive)
+    for pattern in [exe, command]:
+        if not pattern:
+            continue
+        try:
+            proc = subprocess.run(
+                ["pkill", "-f", pattern],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if proc.returncode == 0:
+                return ExecResult(True, f"Fermé: {exe}")
+        except Exception:
+            pass
+
+    return ExecResult(False, f"Processus introuvable: {exe}")
 
 
 def safe_delete(target: str, base_dir: str) -> ExecResult:

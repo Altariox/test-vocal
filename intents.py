@@ -9,7 +9,7 @@ from difflib import SequenceMatcher
 from itertools import product
 from typing import Any, Dict, Optional
 
-from actions import ExecResult, hypr_exec, safe_delete
+from actions import ExecResult, close_app, hypr_exec, safe_delete
 
 
 @dataclass
@@ -49,6 +49,11 @@ _OPEN_PATTERNS = [
 
 _DELETE_PATTERNS = [
     re.compile(r"^(?:supprime|efface|delete)\s+(?P<alias>.+)$"),
+]
+
+_CLOSE_PATTERNS = [
+    # FR + EN verbs
+    re.compile(r"^(?:ferme|quitte|arrete|stop|close|quit|exit|kill)\s+(?P<app>.+)$"),
 ]
 
 
@@ -270,6 +275,35 @@ def match_intent(raw_text: str, ctx: IntentContext) -> Optional[ExecResult]:
                 )
             return result
 
+    # CLOSE
+    for pat in _CLOSE_PATTERNS:
+        m = pat.match(text)
+        if m:
+            app_spoken = m.group("app").strip()
+            resolved = _resolve_app(
+                app_spoken,
+                ctx.apps,
+                threshold=ctx.app_match_threshold,
+                short_threshold=ctx.app_short_threshold,
+                min_len=ctx.app_min_len,
+            )
+            if resolved is None:
+                return ExecResult(False, f"App inconnue: {app_spoken}")
+            if not ctx.cooldown_ok():
+                return ExecResult(True, "(cooldown)")
+            result = close_app(resolved.command)
+            if not resolved.exact and result.ok:
+                return ExecResult(
+                    True,
+                    f"{result.message} (deviné: '{app_spoken}' -> '{resolved.name}', score={resolved.score:.2f})",
+                )
+            if not resolved.exact and not result.ok:
+                return ExecResult(
+                    False,
+                    f"{result.message} (tenté: '{app_spoken}' -> '{resolved.name}', score={resolved.score:.2f})",
+                )
+            return result
+
     # DELETE (alias-based)
     for pat in _DELETE_PATTERNS:
         m = pat.match(text)
@@ -286,7 +320,7 @@ def match_intent(raw_text: str, ctx: IntentContext) -> Optional[ExecResult]:
     if text in {"aide", "help"}:
         return ExecResult(
             True,
-            "Commandes: 'ouvre <app>' | 'lance <app>' | 'supprime <alias>' (apps: match approximatif)",
+            "Commandes: 'ouvre <app>' | 'ferme <app>' | 'supprime <alias>' (apps: match approximatif)",
         )
 
     return None
