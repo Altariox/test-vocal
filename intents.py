@@ -18,6 +18,9 @@ class IntentContext:
     delete_base_dir: str
     delete_aliases: Dict[str, str]
     cooldown_ms: int = 800
+    app_match_threshold: float = 0.72
+    app_short_threshold: float = 0.90
+    app_min_len: int = 4
     _last_action_ts: float = 0.0
 
     def cooldown_ok(self) -> bool:
@@ -177,9 +180,48 @@ def _generate_app_aliases(canonical_key: str) -> set[str]:
     if key in {"prism launcher", "prismlauncher"}:
         variants |= {"prism", "prisme launcher", "prisme", "prismlauncher"}
     if key in {"prusa slicer", "prusa"}:
-        variants |= {"prusa", "prusa sliceur", "prusa slicer"}
+        variants |= {
+            "prusa",
+            "prusa sliceur",
+            "prusa slicer",
+            # Observed Vosk FR outputs for "prusa slicer" / "prusaslicer"
+            "prusse a cela et",
+            "prusse as et",
+            "poussa a cela et soeurs",
+            "pousse a laser",
+            "a laser",
+            "poserent",
+            "poser sur",
+            "posa sa s ur",
+            "posa sa sur",
+            "posa a lecteur",
+            "processeur",
+            "plus a les heures",
+            "plus a l aise heures",
+        }
     if key in {"orca slicer", "orca"}:
-        variants |= {"orca", "orca sliceur", "orca slicer"}
+        variants |= {
+            "orca",
+            "orca sliceur",
+            "orca slicer",
+            # Observed Vosk FR outputs for "orca slicer" / "orcaslicer"
+            "hors casse lecteurs",
+            "hors cas cela et soeurs",
+            "orchestre",
+            "orchestre soeur",
+            "orchestre les heures",
+            "orchestre sur",
+            "orchestre s ur",
+            "orchestre sur lance or casse",
+            "orchestre sur lance or casse",
+            "orques",
+            "orques et",
+            "or casse",
+            "hors casse",
+            "hors casse avec ca",
+            "or catalyseur",
+            "orgasme laser",
+        }
     if key in {"libreoffice", "libre office"}:
         variants |= {"libreoffice", "libre office", "libre office writer", "libre office calc"}
     if key in {"onlyoffice", "only office"}:
@@ -204,7 +246,13 @@ def match_intent(raw_text: str, ctx: IntentContext) -> Optional[ExecResult]:
         m = pat.match(text)
         if m:
             app_spoken = m.group("app").strip()
-            resolved = _resolve_app(app_spoken, ctx.apps)
+            resolved = _resolve_app(
+                app_spoken,
+                ctx.apps,
+                threshold=ctx.app_match_threshold,
+                short_threshold=ctx.app_short_threshold,
+                min_len=ctx.app_min_len,
+            )
             if resolved is None:
                 return ExecResult(False, f"App inconnue: {app_spoken}")
             if not ctx.cooldown_ok():
@@ -369,7 +417,14 @@ def _app_match_score(spoken_key: str, app_key: str) -> float:
     return max(base, combined, char_sim)
 
 
-def _resolve_app(app_spoken: str, apps: Dict[str, str]) -> Optional[ResolvedApp]:
+def _resolve_app(
+    app_spoken: str,
+    apps: Dict[str, str],
+    *,
+    threshold: float = 0.72,
+    short_threshold: float = 0.90,
+    min_len: int = 4,
+) -> Optional[ResolvedApp]:
     key = normalize_text(app_spoken)
     if not key:
         return None
@@ -406,11 +461,11 @@ def _resolve_app(app_spoken: str, apps: Dict[str, str]) -> Optional[ResolvedApp]
         return None
 
     # Avoid accidental launches on extremely short inputs
-    if len(key_clean or key) < 4 and best.score < 0.90:
+    if len(key_clean or key) < min_len and best.score < short_threshold:
         return None
 
     # Threshold avoids launching random apps on very weak matches
-    if best.score < 0.72:
+    if best.score < threshold:
         return None
     return best
 

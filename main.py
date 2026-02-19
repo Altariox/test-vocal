@@ -49,6 +49,9 @@ def main() -> int:
         delete_base_dir=str(cfg.get("delete_base_dir", str(Path.home()))),
         delete_aliases={normalize_text(k): v for k, v in cfg.get("delete_aliases", {}).items()},
         cooldown_ms=int(cfg.get("cooldown_ms", 800)),
+        app_match_threshold=float(cfg.get("app_match_threshold", 0.72)),
+        app_short_threshold=float(cfg.get("app_short_threshold", 0.90)),
+        app_min_len=int(cfg.get("app_min_len", 4)),
     )
 
     _print("Chargement modèle Vosk...")

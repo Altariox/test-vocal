@@ -6,6 +6,9 @@
   "wake_word": "assistant",
   "require_wake_word": false,
   "cooldown_ms": 800,
+  "app_match_threshold": 0.5,
+  "app_short_threshold": 0.9,
+  "app_min_len": 4,
   "apps": {
     "firefox": "firefox",
     "chromium": "chromium",
