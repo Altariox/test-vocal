@@ -64,22 +64,25 @@ fi
 # Extract needed fields using python (avoid jq dependency)
 # Output is tab-separated to keep parsing stable even with spaces in titles.
 IFS=$'\t' read -r addr state_key pid monitor_id at_x at_y size_w size_h is_floating < <(
-  python3 - <<'PY'
+  python3 -c '
 import json, sys
 import re
 import hashlib
 
 try:
-  a = json.loads(sys.stdin.read())
+  raw = sys.stdin.buffer.read()
+  text = raw.decode("utf-8", errors="ignore")
+  a = json.loads(text)
 except Exception:
   print("NONE\tunknown\t0\t0\t0\t0\t0\t0\t0")
-  sys.exit(0)
-addr = a.get('address')
-# address can be int or string like '0x...'
+  raise SystemExit(0)
+
+addr = a.get("address")
 if isinstance(addr, int):
-    addr = hex(addr)
-addr = str(addr or '')
-pid = a.get('pid')
+  addr = hex(addr)
+addr = str(addr or "")
+
+pid = a.get("pid")
 try:
   pid = int(pid)
 except Exception:
@@ -88,45 +91,45 @@ except Exception:
 def valid_addr(s: str) -> bool:
   if not s:
     return False
-  if s in ('0x0', '0'):
+  if s in ("0x0", "0"):
     return False
-  return bool(re.match(r'^0x[0-9a-fA-F]+$', s))
+  return bool(re.match(r"^0x[0-9a-fA-F]+$", s))
 
 def safe_filename(s: str) -> str:
-  s = re.sub(r'[^A-Za-z0-9._-]+', '_', s)
-  s = s.strip('._-')
-  return s or 'unknown'
+  s = re.sub(r"[^A-Za-z0-9._-]+", "_", s)
+  s = s.strip("._-")
+  return s or "unknown"
 
-cls = str(a.get('class') or '')
-title = str(a.get('title') or '')
+cls = str(a.get("class") or "")
+title = str(a.get("title") or "")
 
 if valid_addr(addr):
   state_key = addr
 else:
-  # Fallback: pid is usually stable for the window lifetime.
   if pid > 0:
     state_key = f"pid-{pid}"
   else:
-    # Last resort: hash class+title (avoid overly long filenames)
-    h = hashlib.sha1((cls + "\n" + title).encode('utf-8', 'ignore')).hexdigest()[:12]
+    h = hashlib.sha1((cls + "\n" + title).encode("utf-8", "ignore")).hexdigest()[:12]
     state_key = f"win-{h}"
 
 if not addr:
-  addr = 'NONE'
-mon = a.get('monitor')
+  addr = "NONE"
+
+mon = a.get("monitor")
 try:
-    mon = int(mon)
+  mon = int(mon)
 except Exception:
-    mon = 0
-at = a.get('at') or [0, 0]
-size = a.get('size') or [0, 0]
-flt = a.get('floating')
+  mon = 0
+
+at = a.get("at") or [0, 0]
+size = a.get("size") or [0, 0]
+flt = a.get("floating")
 flt = 1 if flt else 0
+
 sys.stdout.write(
   f"{addr}\t{safe_filename(state_key)}\t{pid}\t{mon}\t{int(at[0])}\t{int(at[1])}\t{int(size[0])}\t{int(size[1])}\t{flt}"
 )
-PY
-<<<"$active_json"
+' <<<"$active_json"
 )
 
 addr_for_dispatch="$addr"
@@ -262,7 +265,7 @@ if ! _looks_like_json "$monitors_json"; then
   exit 4
 fi
 IFS=$'\t' read -r mon_x mon_y mon_w mon_h res_l res_r res_t res_b < <(
-  python3 - "$monitor_id" <<'PY'
+  python3 -c '
 import json, sys
 
 try:
@@ -271,32 +274,39 @@ except Exception:
   mon_id = 0
 
 try:
-  mons = json.loads(sys.stdin.read())
+  raw = sys.stdin.buffer.read()
+  text = raw.decode("utf-8", errors="ignore")
+  mons = json.loads(text)
 except Exception:
   mons = []
+
 mon = None
 for m in mons:
-    if int(m.get('id', -1)) == mon_id:
-        mon = m
-        break
+  try:
+    if int(m.get("id", -1)) == mon_id:
+      mon = m
+      break
+  except Exception:
+    pass
+
 if mon is None:
-    mon = mons[0] if mons else {'x':0,'y':0,'width':0,'height':0,'reserved':[0,0,0,0]}
-res = mon.get('reserved')
-# Hyprland sometimes uses dict reserved or list [top,bottom,left,right]
+  mon = mons[0] if mons else {"x":0,"y":0,"width":0,"height":0,"reserved":[0,0,0,0]}
+
+res = mon.get("reserved")
 if isinstance(res, dict):
-    top = int(res.get('top', 0))
-    bottom = int(res.get('bottom', 0))
-    left = int(res.get('left', 0))
-    right = int(res.get('right', 0))
+  top = int(res.get("top", 0))
+  bottom = int(res.get("bottom", 0))
+  left = int(res.get("left", 0))
+  right = int(res.get("right", 0))
 elif isinstance(res, (list, tuple)) and len(res) == 4:
-    top, bottom, left, right = map(int, res)
+  top, bottom, left, right = map(int, res)
 else:
-    top = bottom = left = right = 0
+  top = bottom = left = right = 0
+
 sys.stdout.write(
   f"{int(mon.get('x',0))}\t{int(mon.get('y',0))}\t{int(mon.get('width',0))}\t{int(mon.get('height',0))}\t{left}\t{right}\t{top}\t{bottom}"
 )
-PY
-<<<"$monitors_json"
+' "$monitor_id" <<<"$monitors_json"
 )
 
 mon_x="$(_int_or_zero "$mon_x")"
